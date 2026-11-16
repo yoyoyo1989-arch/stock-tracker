@@ -74,6 +74,10 @@
   th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
   th{color:var(--muted);font-weight:500}
 
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:0}
+  .kpi{position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:var(--k,var(--line))}
+  .kpi .label::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--k,var(--line));margin-right:8px}
   .hidden{display:none!important}
   .topbar{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;margin-bottom:20px}
   .tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
@@ -149,7 +153,7 @@
       <div class="card">
         <h2>Sales as % of target</h2>
         <div class="hint">One bar per outlet-week. Dashed line marks 90%.</div>
-        <div class="legend"><span><i style="background:var(--bar)"></i>At or above 90%</span><span><i style="background:var(--bad)"></i>Below 90%</span></div>
+        <div class="legend" id="legend"></div>
         <div class="chart" id="chart"></div>
         <div class="xl" id="xl"></div>
         <details><summary>View as table</summary><div id="table"></div></details>
@@ -282,6 +286,9 @@ async function loadProfile() {
 /* ---------------- app ---------------- */
 const THRESHOLD = 90, AXIS_MAX = 120;
 const OUTLETS = ['All', 'Tampines', 'Jurong', 'Orchard'];
+const OUTLET_COLOR = { Tampines: '#2a9d8f', Jurong: '#4f7cd6', Orchard: '#8a63c9' };
+const colorOf = o => OUTLET_COLOR[o] || '#a3adb8';
+const KPI_COLOR = ['#4f7cd6', '#e8742a', '#2a9d8f', '#d99a1e'];
 let ROWS = [], current = 'All';
 
 const $ = id => document.getElementById(id);
@@ -296,7 +303,7 @@ function render() {
 
   // filter buttons
   $('filter').innerHTML = OUTLETS.map(o =>
-    `<button class="${o === current ? 'on' : ''}" data-o="${o}" aria-pressed="${o === current}">${o}</button>`).join('');
+    `<button class="${o === current ? 'on' : ''}" data-o="${o}" aria-pressed="${o === current}">${o === 'All' ? '' : `<i class="dot" style="background:${colorOf(o)}"></i>`}${o}</button>`).join('');
 
   // range
   const weeks = [...new Set(rows.map(r => r.week))].sort();
@@ -313,7 +320,11 @@ function render() {
     ['% of target', tPct.toFixed(1) + '%', tPct >= 100 ? 'Target met' : `${money(target - sales)} short`, 'hl'],
     ['Orders', fmt(orders), `avg ${money(orders ? sales / orders : 0)} per order`, ''],
     ['Returns', rPct.toFixed(1) + '%', `${fmt(returns)} returned orders`, ''],
-  ].map(([l, v, n, c]) => `<div class="card kpi ${c}"><div class="label">${l}</div><div class="value">${v}</div><div class="note">${n}</div></div>`).join('');
+  ].map(([l, v, n, c], i) => `<div class="card kpi ${c}" style="--k:${KPI_COLOR[i]}"><div class="label">${l}</div><div class="value">${v}</div><div class="note">${n}</div></div>`).join('');
+
+  // legend
+  $('legend').innerHTML = (current === 'All' ? OUTLETS.slice(1) : [current]).map(o => `<span><i style="background:${colorOf(o)}"></i>${o}</span>`).join('')
+    + `<span><i style="background:var(--bad)"></i>Below 90% of target</span>`;
 
   // chart
   const outlets = current === 'All' ? OUTLETS.slice(1) : [current];
@@ -323,13 +334,13 @@ function render() {
     + `<div class="gl t" style="bottom:${y(THRESHOLD)}%"><span>90%</span></div>`;
   const bars = groups.map(g => `<div class="grp">${g.rows.map(r => `
       <div class="col" data-k="${r.outlet}|${r.week}">
-        <div class="bar ${r.pct < THRESHOLD ? 'bad' : ''}" style="height:${y(r.pct)}%"></div>
+        <div class="bar ${r.pct < THRESHOLD ? 'bad' : ''}" style="height:${y(r.pct)}%;${r.pct < THRESHOLD ? '' : 'background:' + colorOf(r.outlet)}"></div>
         <div class="v" style="bottom:calc(${y(r.pct)}% + 3px)">${r.pct.toFixed(0)}%</div>
         <div class="hit"></div>
       </div>`).join('')}</div>`).join('');
   $('chart').innerHTML = grid + `<div class="bars">${bars}</div>`;
   $('xl').innerHTML = groups.map(g =>
-    `<div class="g"><b>${g.o}</b><div class="wk">${g.rows.map(r => `<span>${dShort(r.week)}</span>`).join('')}</div></div>`).join('');
+    `<div class="g"><b><i class="dot" style="background:${colorOf(g.o)}"></i>${g.o}</b><div class="wk">${g.rows.map(r => `<span>${dShort(r.week)}</span>`).join('')}</div></div>`).join('');
 
   // tooltips
   document.querySelectorAll('.col').forEach(el => {
@@ -355,7 +366,7 @@ function render() {
   $('cnt').textContent = bad.length;
   $('attn').innerHTML = bad.length ? bad.map(r => `
     <li class="item">
-      <div><div class="t">${r.outlet}</div><div class="d">Week of ${dShort(r.week)}</div></div>
+      <div><div class="t"><i class="dot" style="background:${colorOf(r.outlet)}"></i>${r.outlet}</div><div class="d">Week of ${dShort(r.week)}</div></div>
       <div class="r"><span class="pill">${r.pct.toFixed(1)}%</span><div class="gap">${money(r.target - r.sales)} short</div></div>
     </li>`).join('') : `<li class="empty">All outlet-weeks are at or above 90% of target.</li>`;
 }
