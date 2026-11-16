@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Outlet performance</title>
+<style>
+  :root{
+    --bg:#f5f4f1; --card:#ffffff; --line:#e7e4de; --grid:#ecebe6;
+    --ink:#23262b; --ink2:#5d636b; --muted:#8d939b;
+    --bar:#a3adb8; --bar-hover:#8794a2;
+    --bad:#c8402f; --bad-soft:#fbeeec;
+    --accent:#e8742a; --accent-soft:#fdeee3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;}
+  .wrap{max-width:1040px;margin:0 auto;padding:32px 20px 48px}
+  header{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between;margin-bottom:20px}
+  h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-.01em}
+  h1::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--accent);margin-right:10px;vertical-align:2px}
+  .sub{color:var(--muted);font-size:13px;margin-top:2px}
+  .seg{display:inline-flex;background:#ebe9e4;border-radius:10px;padding:3px;gap:2px}
+  .seg button{border:0;background:transparent;font:inherit;color:var(--ink2);padding:6px 14px;border-radius:8px;cursor:pointer}
+  .seg button:hover{color:var(--ink)}
+  .seg button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08),inset 0 -2px 0 var(--accent)}
+  .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
+  .kpi .label{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+  .kpi .value{font-size:28px;font-weight:650;letter-spacing:-.02em;margin-top:6px;font-variant-numeric:tabular-nums}
+  .kpi .note{color:var(--muted);font-size:12px;margin-top:2px}
+  .kpi.hl .value{color:var(--accent)}
+  .main{display:grid;grid-template-columns:1.7fr 1fr;gap:14px}
+  h2{margin:0 0 2px;font-size:15px;font-weight:600}
+  .hint{color:var(--muted);font-size:12px;margin-bottom:14px}
+  .legend{display:flex;gap:14px;font-size:12px;color:var(--ink2);margin-bottom:10px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+  /* chart */
+  .chart{position:relative;height:270px;margin:6px 0 0 34px;}
+  .gl{position:absolute;left:0;right:0;border-top:1px solid var(--grid)}
+  .gl span{position:absolute;left:-34px;top:-8px;width:28px;text-align:right;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .gl.t{border-top:1.5px dashed var(--ink2)}
+  .gl.t span{color:var(--ink2)}
+  .bars{position:absolute;inset:0;display:flex;align-items:stretch;gap:14px;padding:0 4px}
+  .grp{flex:1;display:flex;gap:6px;align-items:stretch;justify-content:center}
+  .col{position:relative;flex:1;max-width:44px;height:100%}
+  .bar{position:absolute;left:0;right:0;bottom:0;background:var(--bar);border-radius:4px 4px 0 0;transition:height .3s ease,background .15s}
+  .bar.bad{background:var(--bad)}
+  .col:hover .bar{filter:brightness(.92)}
+  .col .v{position:absolute;left:-6px;right:-6px;text-align:center;font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums;transition:bottom .3s ease}
+  .col .hit{position:absolute;inset:0;cursor:default}
+  .xl{display:flex;gap:14px;padding:0 4px;margin:8px 0 0 34px}
+  .xl .g{flex:1;text-align:center;font-size:12px;color:var(--ink2)}
+  .xl .g b{display:block;color:var(--ink);font-weight:600}
+  .xl .wk{display:flex;gap:6px;justify-content:center;margin-top:2px}
+  .xl .wk span{flex:1;max-width:44px;font-size:10.5px;color:var(--muted);text-align:center}
+  .tip{position:fixed;pointer-events:none;background:var(--ink);color:#fff;font-size:12px;padding:8px 10px;border-radius:8px;opacity:0;transition:opacity .1s;z-index:10;white-space:nowrap;line-height:1.5}
+  .tip b{font-weight:600}
+  /* attention list */
+  .list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+  .item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--line);border-left:3px solid var(--bad);border-radius:10px;background:#fff}
+  .item .t{font-weight:600}
+  .item .d{color:var(--muted);font-size:12px}
+  .item .r{text-align:right}
+  .pill{display:inline-block;background:var(--bad-soft);color:var(--bad);font-weight:650;padding:1px 8px;border-radius:999px;font-size:12px;font-variant-numeric:tabular-nums}
+  .item .gap{color:var(--ink2);font-size:12px;margin-top:2px;font-variant-numeric:tabular-nums}
+  .empty{color:var(--muted);padding:18px 4px}
+  .count{display:inline-block;margin-left:6px;background:var(--accent-soft);color:var(--accent);border-radius:999px;font-size:12px;font-weight:650;padding:0 8px}
+  details{margin-top:12px;color:var(--ink2);font-size:12px}
+  summary{cursor:pointer}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-variant-numeric:tabular-nums}
+  th,td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+  th{color:var(--muted);font-weight:500}
+
+  .hidden{display:none!important}
+  .topbar{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;margin-bottom:20px}
+  .tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .nav{display:inline-flex;gap:4px}
+  .nav button,.btn-ghost{border:0;background:transparent;font:inherit;color:var(--ink2);padding:6px 12px;border-radius:8px;cursor:pointer}
+  .nav button:hover,.btn-ghost:hover{background:#ebe9e4;color:var(--ink)}
+  .nav button.on{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent);border-radius:0}
+  .who{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 4px;border:1px solid var(--line);border-radius:999px;background:var(--card)}
+  .av{width:26px;height:26px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:650;display:grid;place-items:center;font-size:12px;text-transform:uppercase}
+  .who .n{font-weight:600}
+  .role{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .who .btn-ghost{padding:3px 10px;font-size:13px}
+  .rowbar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
+  /* login */
+  .login{min-height:100vh;display:grid;place-items:center;padding:20px}
+  .login .card{width:100%;max-width:360px;padding:28px}
+  .login h1{font-size:20px;margin-bottom:4px}
+  label{display:block;font-size:12px;color:var(--ink2);margin:14px 0 5px}
+  input,select{width:100%;font:inherit;color:var(--ink);padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff}
+  input:focus,select:focus{outline:2px solid var(--accent);outline-offset:0;border-color:transparent}
+  .btn{width:100%;margin-top:18px;border:0;background:var(--accent);color:#fff;font:inherit;font-weight:600;padding:10px;border-radius:9px;cursor:pointer}
+  .btn:hover{filter:brightness(.95)}
+  .btn:disabled{opacity:.6;cursor:default}
+  .err{color:var(--bad);background:var(--bad-soft);border-radius:8px;padding:8px 10px;font-size:13px;margin-top:14px}
+  .ok{color:#2f7d4f;background:#edf6f0;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:14px}
+  .users{display:grid;grid-template-columns:1.4fr 1fr;gap:14px}
+  .users .btn{width:auto;padding:9px 18px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:860px){.users{grid-template-columns:1fr}}
+  @media(max-width:860px){.kpis{grid-template-columns:repeat(2,1fr)}.main{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<!-- Sign-in screen -->
+<div class="login hidden" id="login">
+  <form class="card" id="loginForm" autocomplete="on">
+    <h1>Outlet performance</h1>
+    <div class="sub">Sign in to view the dashboard</div>
+    <label for="lu">Username</label>
+    <input id="lu" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label for="lp">Password</label>
+    <input id="lp" name="password" type="password" autocomplete="current-password" required>
+    <div class="err hidden" id="loginErr" role="alert"></div>
+    <button class="btn" id="loginBtn" type="submit">Sign in</button>
+  </form>
+</div>
+
+<!-- App (shown when signed in) -->
+<div class="wrap hidden" id="app">
+  <div class="topbar">
+    <h1>Outlet performance</h1>
+    <div class="tools">
+      <nav class="nav" id="nav">
+        <button data-v="dash" class="on">Dashboard</button>
+        <button data-v="users" id="navUsers" class="hidden">Users</button>
+      </nav>
+      <div class="who">
+        <span class="av" id="av"></span>
+        <span><span class="n" id="uname"></span> <span class="role" id="urole"></span></span>
+        <button class="btn-ghost" id="signout">Sign out</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-dash">
+    <div class="rowbar">
+      <div class="sub" id="range"></div>
+      <div class="seg" id="filter" role="group" aria-label="Filter by outlet"></div>
+    </div>
+  <section class="kpis" id="kpis"></section>
+  
+    <section class="main">
+      <div class="card">
+        <h2>Sales as % of target</h2>
+        <div class="hint">One bar per outlet-week. Dashed line marks 90%.</div>
+        <div class="legend"><span><i style="background:var(--bar)"></i>At or above 90%</span><span><i style="background:var(--bad)"></i>Below 90%</span></div>
+        <div class="chart" id="chart"></div>
+        <div class="xl" id="xl"></div>
+        <details><summary>View as table</summary><div id="table"></div></details>
+      </div>
+      <div class="card">
+        <h2>Needs attention <span class="count" id="cnt">0</span></h2>
+        <div class="hint">Outlet-weeks under 90% of target, worst first.</div>
+        <ul class="list" id="attn"></ul>
+      </div>
+    </section>
+  </div>
+
+  <div id="view-users" class="hidden">
+    <div class="users">
+      <div class="card">
+        <h2>Users</h2>
+        <div class="hint">Everyone who can sign in to this dashboard.</div>
+        <div id="userTable"></div>
+      </div>
+      <form class="card" id="addUser" autocomplete="off">
+        <h2>Add user</h2>
+        <div class="hint">Set their initial password; they can sign in straight away.</div>
+        <label for="nu">Username</label>
+        <input id="nu" required autocapitalize="none" spellcheck="false" placeholder="e.g. alex">
+        <label for="np">Initial password</label>
+        <input id="np" type="text" required minlength="6" autocomplete="off" placeholder="min 6 characters">
+        <label for="nr">Role</label>
+        <select id="nr"><option value="user">User</option><option value="admin">Admin</option></select>
+        <div class="err hidden" id="addErr" role="alert"></div>
+        <div class="ok hidden" id="addOk" role="status"></div>
+        <button class="btn" type="submit" id="addBtn">Add user</button>
+      </form>
+    </div>
+  </div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+/* ------------------------------------------------------------------
+   SUPABASE CONFIG + AUTH
+   Usernames map to an internal email (<username>@outlets.example), so users
+   only ever type a username. Passwords live in Supabase's auth.users.
+------------------------------------------------------------------- */
+const SUPABASE_URL = 'https://aisfafhifqdkqdnodiiu.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_2T6hRBb1WSOO95cBLUXd-A_c4WVcyeX';
+const EMAIL_DOMAIN = 'outlets.example';
+const SESSION_KEY = 'outlet_dash_session';
+
+let session = null;   // { access_token, refresh_token, expires_at, user_id }
+let profile = null;   // { username, role }
+
+const store = {
+  get() { try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; } },
+  set(v) { try { v ? localStorage.setItem(SESSION_KEY, JSON.stringify(v)) : localStorage.removeItem(SESSION_KEY); } catch {} }
+};
+
+function toSession(j) {
+  return { access_token: j.access_token, refresh_token: j.refresh_token,
+           expires_at: Math.floor(Date.now() / 1000) + (j.expires_in || 3600), user_id: j.user.id };
+}
+
+async function tokenRequest(grant, body) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=${grant}`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error_description || j.msg || 'Sign-in failed');
+  return toSession(j);
+}
+
+async function signIn(username, password) {
+  const email = `${username.trim().toLowerCase()}@${EMAIL_DOMAIN}`;
+  try { session = await tokenRequest('password', { email, password }); }
+  catch (e) { throw new Error(/invalid login/i.test(e.message) ? 'Invalid username or password.' : e.message); }
+  store.set(session);
+}
+
+async function refreshSession() {
+  session = await tokenRequest('refresh_token', { refresh_token: session.refresh_token });
+  store.set(session);
+}
+
+async function signOut() {
+  const token = session && session.access_token;
+  session = null; profile = null; store.set(null);
+  if (token) {
+    try { await fetch(`${SUPABASE_URL}/auth/v1/logout`, { method: 'POST', headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}` } }); } catch {}
+  }
+  showLogin();
+}
+
+/* Authenticated REST call; refreshes the token when it is about to expire. */
+async function api(path, opts = {}) {
+  if (!session) throw new Error('Not signed in');
+  if (session.expires_at - 30 < Date.now() / 1000) {
+    try { await refreshSession(); } catch { await signOut(); throw new Error('Session expired. Please sign in again.'); }
+  }
+  const res = await fetch(`${SUPABASE_URL}${path}`, {
+    ...opts,
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  });
+  if (res.status === 401) { await signOut(); throw new Error('Session expired. Please sign in again.'); }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((body && (body.message || body.error_description)) || `Request failed (${res.status})`);
+  return body;
+}
+
+/* ------------------------------------------------------------------
+   DATA LOADING — the only function that knows where dashboard data
+   comes from (Supabase table public.outlet_weekly, signed-in users only).
+   Resolves to an array of { outlet, week, sales, target, orders, returns }.
+------------------------------------------------------------------- */
+async function loadData() {
+  const data = await api('/rest/v1/outlet_weekly?select=outlet,week,sales,target,orders,returns&order=week.asc,outlet.asc');
+  return data.map(r => ({
+    outlet: r.outlet, week: r.week,
+    sales: Number(r.sales), target: Number(r.target),
+    orders: Number(r.orders), returns: Number(r.returns)
+  }));
+}
+
+async function loadProfile() {
+  const rows = await api(`/rest/v1/profiles?select=username,role&id=eq.${session.user_id}`);
+  if (!rows.length) throw new Error('No profile found for this account.');
+  return rows[0];
+}
+
+/* ---------------- app ---------------- */
+const THRESHOLD = 90, AXIS_MAX = 120;
+const OUTLETS = ['All', 'Tampines', 'Jurong', 'Orchard'];
+let ROWS = [], current = 'All';
+
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString('en-SG');
+const money = n => 'S$' + fmt(Math.round(n));
+const pct = (a, b) => b ? a / b * 100 : 0;
+const dShort = s => new Date(s + 'T00:00:00').toLocaleDateString('en-GB', {day: 'numeric', month: 'short'});
+const row = r => ({...r, pct: pct(r.sales, r.target)});
+
+function render() {
+  const rows = ROWS.filter(r => current === 'All' || r.outlet === current).map(row);
+
+  // filter buttons
+  $('filter').innerHTML = OUTLETS.map(o =>
+    `<button class="${o === current ? 'on' : ''}" data-o="${o}" aria-pressed="${o === current}">${o}</button>`).join('');
+
+  // range
+  const weeks = [...new Set(rows.map(r => r.week))].sort();
+  $('range').textContent = weeks.length
+    ? `Weeks of ${dShort(weeks[0])} – ${dShort(weeks[weeks.length - 1])} 2026 · ${current === 'All' ? 'all outlets' : current}`
+    : '';
+
+  // KPIs
+  const sum = k => rows.reduce((a, r) => a + r[k], 0);
+  const sales = sum('sales'), target = sum('target'), orders = sum('orders'), returns = sum('returns');
+  const tPct = pct(sales, target), rPct = pct(returns, orders);
+  $('kpis').innerHTML = [
+    ['Total sales', money(sales), `of ${money(target)} target`, ''],
+    ['% of target', tPct.toFixed(1) + '%', tPct >= 100 ? 'Target met' : `${money(target - sales)} short`, 'hl'],
+    ['Orders', fmt(orders), `avg ${money(orders ? sales / orders : 0)} per order`, ''],
+    ['Returns', rPct.toFixed(1) + '%', `${fmt(returns)} returned orders`, ''],
+  ].map(([l, v, n, c]) => `<div class="card kpi ${c}"><div class="label">${l}</div><div class="value">${v}</div><div class="note">${n}</div></div>`).join('');
+
+  // chart
+  const outlets = current === 'All' ? OUTLETS.slice(1) : [current];
+  const groups = outlets.map(o => ({o, rows: rows.filter(r => r.outlet === o).sort((a, b) => a.week.localeCompare(b.week))}));
+  const y = v => v / AXIS_MAX * 100;
+  const grid = [0, 50, 100].map(v => `<div class="gl" style="bottom:${y(v)}%"><span>${v}%</span></div>`).join('')
+    + `<div class="gl t" style="bottom:${y(THRESHOLD)}%"><span>90%</span></div>`;
+  const bars = groups.map(g => `<div class="grp">${g.rows.map(r => `
+      <div class="col" data-k="${r.outlet}|${r.week}">
+        <div class="bar ${r.pct < THRESHOLD ? 'bad' : ''}" style="height:${y(r.pct)}%"></div>
+        <div class="v" style="bottom:calc(${y(r.pct)}% + 3px)">${r.pct.toFixed(0)}%</div>
+        <div class="hit"></div>
+      </div>`).join('')}</div>`).join('');
+  $('chart').innerHTML = grid + `<div class="bars">${bars}</div>`;
+  $('xl').innerHTML = groups.map(g =>
+    `<div class="g"><b>${g.o}</b><div class="wk">${g.rows.map(r => `<span>${dShort(r.week)}</span>`).join('')}</div></div>`).join('');
+
+  // tooltips
+  document.querySelectorAll('.col').forEach(el => {
+    const [o, w] = el.dataset.k.split('|');
+    const r = rows.find(x => x.outlet === o && x.week === w);
+    el.addEventListener('mousemove', e => {
+      const t = $('tip');
+      t.innerHTML = `<b>${r.outlet} · ${dShort(r.week)}</b><br>${r.pct.toFixed(1)}% of target<br>${money(r.sales)} / ${money(r.target)}<br>${fmt(r.orders)} orders · ${fmt(r.returns)} returns`;
+      t.style.opacity = 1;
+      t.style.left = Math.min(e.clientX + 14, innerWidth - t.offsetWidth - 8) + 'px';
+      t.style.top = (e.clientY + 14) + 'px';
+    });
+    el.addEventListener('mouseleave', () => $('tip').style.opacity = 0);
+  });
+
+  // table view
+  $('table').innerHTML = `<table><tr><th>Outlet</th><th>Week</th><th>Sales</th><th>Target</th><th>% of target</th><th>Orders</th><th>Returns</th></tr>` +
+    groups.flatMap(g => g.rows).map(r =>
+      `<tr><td>${r.outlet}</td><td>${dShort(r.week)}</td><td>${fmt(r.sales)}</td><td>${fmt(r.target)}</td><td>${r.pct.toFixed(1)}%</td><td>${fmt(r.orders)}</td><td>${fmt(r.returns)}</td></tr>`).join('') + `</table>`;
+
+  // needs attention
+  const bad = rows.filter(r => r.pct < THRESHOLD).sort((a, b) => a.pct - b.pct);
+  $('cnt').textContent = bad.length;
+  $('attn').innerHTML = bad.length ? bad.map(r => `
+    <li class="item">
+      <div><div class="t">${r.outlet}</div><div class="d">Week of ${dShort(r.week)}</div></div>
+      <div class="r"><span class="pill">${r.pct.toFixed(1)}%</span><div class="gap">${money(r.target - r.sales)} short</div></div>
+    </li>`).join('') : `<li class="empty">All outlet-weeks are at or above 90% of target.</li>`;
+}
+
+$('filter').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b) { current = b.dataset.o; render(); }
+});
+
+/* ---------------- views, login, users ---------------- */
+const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const show = (id, on) => $(id).classList.toggle('hidden', !on);
+
+function showLogin() {
+  show('app', false); show('login', true);
+  $('lp').value = ''; show('loginErr', false); $('lu').focus();
+}
+
+function setView(v) {
+  show('view-dash', v === 'dash'); show('view-users', v === 'users');
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  if (v === 'users') loadUsers();
+}
+
+async function loadUsers() {
+  try {
+    const rows = await api('/rest/v1/profiles?select=username,role,created_at&order=created_at.asc');
+    $('userTable').innerHTML = `<table><tr><th>Username</th><th>Role</th><th>Added</th></tr>` +
+      rows.map(r => `<tr><td>${esc(r.username)}</td><td>${esc(r.role)}</td><td>${new Date(r.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</td></tr>`).join('') + `</table>`;
+  } catch (e) { $('userTable').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+
+async function enterApp() {
+  try {
+    profile = await loadProfile();
+    ROWS = await loadData();
+  } catch (e) {
+    if (!session) return;                      // signOut already handled
+    await signOut(); $('loginErr').textContent = e.message; show('loginErr', true);
+    return;
+  }
+  $('uname').textContent = profile.username;
+  $('urole').textContent = profile.role;
+  $('av').textContent = profile.username[0];
+  show('navUsers', profile.role === 'admin');
+  show('login', false); show('app', true);
+  setView('dash'); render();
+}
+
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('loginBtn'); btn.disabled = true; btn.textContent = 'Signing in…'; show('loginErr', false);
+  try { await signIn($('lu').value, $('lp').value); await enterApp(); }
+  catch (err) { $('loginErr').textContent = err.message; show('loginErr', true); }
+  finally { btn.disabled = false; btn.textContent = 'Sign in'; }
+});
+
+$('signout').addEventListener('click', signOut);
+$('nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setView(b.dataset.v); });
+
+$('addUser').addEventListener('submit', async e => {
+  e.preventDefault();
+  show('addErr', false); show('addOk', false);
+  const btn = $('addBtn'); btn.disabled = true;
+  const u = $('nu').value.trim().toLowerCase();
+  try {
+    await api('/rest/v1/rpc/admin_create_user', { method: 'POST',
+      body: JSON.stringify({ p_username: u, p_password: $('np').value, p_role: $('nr').value }) });
+    $('addOk').textContent = `Added "${u}". They can sign in now with the password you set.`; show('addOk', true);
+    $('addUser').reset(); loadUsers();
+  } catch (err) { $('addErr').textContent = err.message; show('addErr', true); }
+  finally { btn.disabled = false; }
+});
+
+/* start: resume a saved session or show sign-in */
+(async () => {
+  session = store.get();
+  if (session) await enterApp(); else showLogin();
+})();
+</script>
+</body>
+</html>
